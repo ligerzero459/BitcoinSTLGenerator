@@ -43,10 +43,10 @@ public class BitcoinSTLGenerator {
 
         if (parse.publicKey == null || parse.privateKey == null) {
             // Once keyfile parsing is implemented, this will be used
-            if (parse.keyFile == null) {
-                System.out.println("No keyfile specified. You must supply both public and private key to create STL file.");
-                System.exit(-1);
-            }
+//            if (parse.keyFile == null) {
+//                System.out.println("No keyfile specified. You must supply both public and private key to create STL file.");
+//                System.exit(-1);
+//            }
 
             // Until then, this logic will warn users to input both public and private keys
             System.out.println("You must supply both public and private key to create STL file.");
