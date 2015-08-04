@@ -20,5 +20,4 @@ jar cmf ../manifest.mf BitcoinSTLGenerator.jar io
 
 ## Running BitcoinSTLGenerator
 
-
 Navigate to folder containing jar. Run jar using `java -jar BitcoinSTLGenerator.jar`. It's recommended you use `--help` on first run to view flags needed to pass public and private keys.

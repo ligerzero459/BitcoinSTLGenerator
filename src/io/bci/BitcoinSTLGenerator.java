@@ -6,6 +6,7 @@
 package io.bci;
 
 import com.beust.jcommander.JCommander;
+import io.bci.object.Keypair;
 import java.awt.Color;
 import java.awt.image.BufferedImage;
 import java.io.ByteArrayOutputStream;
@@ -13,10 +14,11 @@ import java.io.File;
 import java.io.FileNotFoundException;
 import java.io.FileOutputStream;
 import java.io.IOException;
-import java.util.logging.Level;
-import java.util.logging.Logger;
+import java.util.ArrayList;
+import java.util.Scanner;
 import net.glxn.qrgen.core.image.ImageType;
 import net.glxn.qrgen.javase.QRCode;
+import org.json.*;
 
 /**
  *
@@ -27,51 +29,28 @@ public class BitcoinSTLGenerator {
     private static String publicKey;
     private static String privateKey;
     private static String filePrefix;
+    private static String keyFileName;
+    private static int pixelSize = 96;
+    private static boolean noStl = false;
+    private static ArrayList<Keypair> keys;
 
     /**
      * @param args the command line arguments
      */
     public static void main(String[] args) {
-        ParamParser parse = new ParamParser();
-        JCommander jcom = new JCommander(parse, args);
-        jcom.setProgramName("BitcoinSTLGenerator");
-
-        if (parse.help) {
-            jcom.usage();
-            System.exit(0);
-        }
-
-        if (parse.publicKey == null || parse.privateKey == null) {
-            // Once keyfile parsing is implemented, this will be used
-//            if (parse.keyFile == null) {
-//                System.out.println("No keyfile specified. You must supply both public and private key to create STL file.");
-//                System.exit(-1);
-//            }
-
-            // Until then, this logic will warn users to input both public and private keys
-            System.out.println("You must supply both public and private key to create STL file.");
-            System.exit(-2);
-        } else {
-            publicKey = parse.publicKey;
-            privateKey = parse.privateKey;
-        }
-
-        if (parse.filePrefix != null) {
-            filePrefix = parse.filePrefix + "_";
-        } else {
-            filePrefix = "";
-        }
-
+        // Parse command line parameters
+        commandLineParse(args);
+        // Check if save dirs exist and create them if they don't
         checkSaveDir();
 
-//        System.out.println("Public key: "+ parse.publicKey);
-//        System.out.println("Private key: " + parse.privateKey);
         // Call generateQRCode(String) for both public and private key
         // Expandable for keys read from a file later
         ByteArrayOutputStream pubKey = generateQRCode(publicKey);
         ByteArrayOutputStream privKey = generateQRCode(privateKey);
 
-        saveKeys(pubKey, privKey, 1);
+        // Saves single key
+        // Will be modified to account for JSON files
+        saveKeys(pubKey, privKey);
     }
 
     private static void checkSaveDir() {
@@ -97,20 +76,27 @@ public class BitcoinSTLGenerator {
         // Generate QR Code as PNG
         qr = QRCode.from(key)
                 .to(ImageType.PNG)
-                .withSize(500, 500)
+                .withSize(getPixelSize(), getPixelSize())
                 .stream();
 
         return qr;
     }
-
-    private static void saveKeys(ByteArrayOutputStream pub, ByteArrayOutputStream priv, int index) {
-        // Saving public key first
-        String pubFileName = getFilePrefix() + "pubKey_" + index;
-        String privFileName = getFilePrefix() + "privKey_" + index;
+    
+    /*
+    @function: saveKeys
+    @parameters: 
+        pub: ByteArrayOutputStream containing public key
+        priv: ByteArrayOutputStream containing private key
+    @description: used to save a single key image
+    */
+    private static void saveKeys(ByteArrayOutputStream pub, ByteArrayOutputStream priv) {
+        String pubFileName = getFilePrefix() + "pubKey";
+        String privFileName = getFilePrefix() + "privKey";
 
         File pubFile = new File("images/" + pubFileName + ".png");
         File privFile = new File("images/" + privFileName + ".png");
 
+        // Saving public key first
         try {
             FileOutputStream fout = new FileOutputStream(pubFile);
 
@@ -129,6 +115,7 @@ public class BitcoinSTLGenerator {
             System.out.println("Public key file created: " + pubFile.toString());
         }
 
+        // Then saving the private key
         try {
             FileOutputStream fout = new FileOutputStream(privFile);
 
@@ -147,16 +134,79 @@ public class BitcoinSTLGenerator {
             System.out.println("Private key file created: " + privFile.toString());
         }
 
-        drawSTL(pubFile, pubFileName);
-        drawSTL(privFile, privFileName);
+        // Checking for noStl flag. If set, don't create stl files
+        if (!noStl) {
+            drawSTL(pubFile, pubFileName);
+            drawSTL(privFile, privFileName);
+        }
+    }
+    
+    /*
+    @function: saveKeys
+    @parameters: 
+        pub: ByteArrayOutputStream containing public key
+        priv: ByteArrayOutputStream containing private key
+        index: current index of json array plus 1
+    @description: used to save multiple key images
+    */
+    private static void saveKeys(ByteArrayOutputStream pub, ByteArrayOutputStream priv, int index) {
+        String pubFileName = getFilePrefix() + "pubKey_" + index;
+        String privFileName = getFilePrefix() + "privKey_" + index;
+
+        File pubFile = new File("images/" + pubFileName + ".png");
+        File privFile = new File("images/" + privFileName + ".png");
+
+        // Saving public key first
+        try {
+            FileOutputStream fout = new FileOutputStream(pubFile);
+
+            fout.write(pub.toByteArray());
+
+            fout.flush();
+            fout.close();
+
+        } catch (FileNotFoundException e) {
+            System.out.println("ERROR: Public key file creation failed: " + pubFile.toString());
+            e.printStackTrace();
+        } catch (IOException e) {
+            System.out.println("ERROR: Public key file read/write failed: " + pubFile.toString());
+            e.printStackTrace();
+        } finally {
+            System.out.println("Public key file created: " + pubFile.toString());
+        }
+
+        // Then saving the private key
+        try {
+            FileOutputStream fout = new FileOutputStream(privFile);
+
+            fout.write(priv.toByteArray());
+
+            fout.flush();
+            fout.close();
+
+        } catch (FileNotFoundException e) {
+            System.out.println("ERROR: Private key file creation failed: " + privFile.toString());
+            e.printStackTrace();
+        } catch (IOException e) {
+            System.out.println("ERROR: Private key file read/write failed: " + privFile.toString());
+            e.printStackTrace();
+        } finally {
+            System.out.println("Private key file created: " + privFile.toString());
+        }
+
+        // Checking for noStl flag. If set, don't create stl files
+        if (!noStl) {
+            drawSTL(pubFile, pubFileName);
+            drawSTL(privFile, privFileName);
+        }
     }
 
     private static void drawSTL(File qrFile, String filename) {
-        int height = -250;
-        int width = -250;
-        float PLATFORM_RATIO = 15.0f;
+        int height = 0;
+        int width = 0;
+        float PLATFORM_RATIO = 2.3f;
         float PLATFORM_HEIGHT = 1.0f;
-        boolean printPlatform = true;
+        boolean printPlatform = false;
         boolean printQRbottom = true;
         STLDrawer drawer = null;
         float[] pofloat1 = new float[3];
@@ -170,11 +220,7 @@ public class BitcoinSTLGenerator {
         try {
             drawer = new STLDrawer("STLs/" + filename + ".stl");
         } catch (FileNotFoundException e) {
-            try {
-                System.out.println("ERROR: Unable to create stl file! - " + drawer.getFilename());
-            } catch (IOException ex) {
-                Logger.getLogger(BitcoinSTLGenerator.class.getName()).log(Level.SEVERE, null, ex);
-            }
+            System.out.println("ERROR: Unable to create stl file! - " + filename + ".stl");
             e.printStackTrace();
         }
 
@@ -182,6 +228,7 @@ public class BitcoinSTLGenerator {
             image = javax.imageio.ImageIO.read(qrFile);
             height = image.getHeight();
             width = image.getWidth();
+            
         } catch (IOException e) {
             System.out.println("ERROR: Unable to open picture file! - " + qrFile.toString());
             e.printStackTrace();
@@ -448,13 +495,74 @@ public class BitcoinSTLGenerator {
 
         drawer.resizeNumTriangles();
         
-        try {
-            System.out.println("STL drawn: " + drawer.getFilename());
-        } catch (IOException ex) {
-            Logger.getLogger(BitcoinSTLGenerator.class.getName()).log(Level.SEVERE, null, ex);
-        }
+        System.out.println("STL drawn: " + filename + ".stl");
         drawer.closeFile();
 
+    }
+    
+    private static void parseJsonFile() {
+        try {
+            String jsonFile = new Scanner(new File(getKeyFileName())).useDelimiter("\\Z").next();
+            
+            System.out.println(jsonFile);
+            
+            JSONTokener tokener = new JSONTokener(jsonFile);
+            JSONArray keyArray = new JSONArray(tokener);
+        } catch (Exception e) {
+            e.printStackTrace();
+        }
+    }
+    
+    private static void commandLineParse(String[] args) {
+        ParamParser parse = new ParamParser();
+        JCommander jcom = new JCommander(parse, args);
+        jcom.setProgramName("BitcoinSTLGenerator");
+
+        if (parse.isHelp()) {
+            jcom.usage();
+            System.exit(0);
+        }
+
+        if (parse.getPublicKey() == null || parse.getPrivateKey() == null) {
+            // Once keyfile parsing is implemented, this will be used
+//            if (parse.getKeyFile() == null) {
+//                System.out.println("No keyfile specified. You must supply both public and private key to create STL file.");
+//                System.exit(-1);
+//            }
+//            
+//            if (parse.getKeyFile().toLowerCase().contains(".json")) {
+//                setKeyFileName(parse.getKeyFile().toLowerCase());
+//            } else {
+//                setKeyFileName(parse.getKeyFile().toLowerCase() + ".json");
+//            }
+//            
+//            // Initialize key arraylist
+//            setKeys(new ArrayList<Keypair>());
+//            
+//            
+//            // Parse keys from JSON
+//            parseJsonFile();
+            System.out.println("You must supply both public and private key to create STL file.");
+            System.exit(-1);
+        } else {
+            setPublicKey(parse.getPublicKey());
+            setPrivateKey(parse.getPrivateKey());
+        }
+
+        if (parse.getFilePrefix() != null) {
+            setFilePrefix(parse.getFilePrefix() + "_");
+        } else {
+            setFilePrefix("");
+        }
+        
+        if (parse.isNoStl()) {
+            setNoStl(true);
+        }
+        
+        if (parse.getInchSize() > 0) {
+            double pxSize = parse.getInchSize() * 96;
+            setPixelSize((int) Math.floor(pxSize));
+        }
     }
 
     public static String getPublicKey() {
@@ -481,4 +589,36 @@ public class BitcoinSTLGenerator {
         BitcoinSTLGenerator.filePrefix = filePrefix;
     }
 
+    public static String getKeyFileName() {
+        return keyFileName;
+    }
+
+    public static void setKeyFileName(String keyFileName) {
+        BitcoinSTLGenerator.keyFileName = keyFileName;
+    }
+    
+    public static int getPixelSize() {
+        return pixelSize;
+    }
+
+    public static void setPixelSize(int pixelSize) {
+        BitcoinSTLGenerator.pixelSize = pixelSize;
+    }
+    
+    public static boolean isNoStl() {
+        return noStl;
+    }
+
+    public static void setNoStl(boolean noStl) {
+        BitcoinSTLGenerator.noStl = noStl;
+    }
+
+    public static ArrayList<Keypair> getKeys() {
+        return keys;
+    }
+
+    public static void setKeys(ArrayList<Keypair> keys) {
+        BitcoinSTLGenerator.keys = keys;
+    }
+    
 }
